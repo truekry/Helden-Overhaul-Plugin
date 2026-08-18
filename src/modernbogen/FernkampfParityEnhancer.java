@@ -9,17 +9,19 @@ import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
-/** Erzeugt den Fernkampfbereich aus den von der Helden-Software berechneten Kampfset-Daten. */
+/** Erzeugt den Fernkampfbereich direkt aus der vollständigen Held-XML der Helden-Software. */
 public final class FernkampfParityEnhancer {
     private FernkampfParityEnhancer() {}
 
-    public static String enhance(String html, Document heldDoc) { return enhance(html, heldDoc, null); }
+    public static String enhance(String html, Document heldDoc) {
+        if (html == null || heldDoc == null) return html;
 
-    public static String enhance(String html, Document heldDoc, Document calculatedDoc) {
-        if (html == null) return html;
-        List<RangedWeapon> weapons = heldDoc == null ? new ArrayList<RangedWeapon>() : readEquipped(heldDoc);
-        if (calculatedDoc != null) mergeCalculatedWeapons(weapons, calculatedDoc);
+        // Die zentrale Held-XML enthält bereits die von der Helden-Software
+        // berechneten Kampfsets. Deshalb wird hier keine zweite API-Antwort benötigt.
+        List<RangedWeapon> weapons = readEquipped(heldDoc);
+        mergeCalculatedWeapons(weapons, heldDoc);
         if (weapons.isEmpty()) return html;
+
         String section = render(weapons);
         String oldMarker = "<table class=\"fkwaffen modern-section\"";
         int oldStart = html.indexOf(oldMarker);
@@ -30,6 +32,7 @@ public final class FernkampfParityEnhancer {
                 return html.substring(0, oldStart) + section + html.substring(oldEnd);
             }
         }
+
         int marker = html.indexOf("<table class=\"ruestungen modern-section\"");
         if (marker < 0) marker = html.indexOf("<table class=\"schilde modern-section\"");
         if (marker < 0) marker = html.indexOf("<table class=\"inventar modern-section\"");
@@ -57,7 +60,7 @@ public final class FernkampfParityEnhancer {
         return result;
     }
 
-    /** Liest ausschließlich die Fernkampfwaffen des aktiven Kampfsets. */
+    /** Liest die Fernkampfwaffen aus dem tatsächlich aktiven Kampfset. */
     private static void mergeCalculatedWeapons(List<RangedWeapon> weapons, Document doc) {
         Element set = findActiveCombatSet(doc);
         if (set == null) return;
@@ -69,17 +72,20 @@ public final class FernkampfParityEnhancer {
         for (int i = 0; i < containers.getLength(); i++) {
             Element container = (Element) containers.item(i);
             if (container.hasAttribute("inbenutzung") && !"true".equalsIgnoreCase(container.getAttribute("inbenutzung"))) continue;
+
             NodeList list = container.getElementsByTagName("fernkampfwaffe");
             for (int j = 0; j < list.getLength(); j++) {
                 Element e = (Element) list.item(j);
                 String name = text(e, "name");
                 if (name.isEmpty()) name = attr(e, "name");
                 if (name.isEmpty()) continue;
+
                 RangedWeapon w = find(weapons, name);
                 if (w == null) {
                     w = new RangedWeapon();
                     w.name = name;
-                    addExisting(weapons, names, w);
+                    weapons.add(w);
+                    names.add(normalize(name));
                 }
                 applyCalculated(w, e);
             }
@@ -93,10 +99,6 @@ public final class FernkampfParityEnhancer {
         w.talent = talent == null ? "" : talent.trim();
         String key = normalize(w.name) + "|" + normalize(w.talent);
         if (seen.add(key)) list.add(w);
-    }
-
-    private static void addExisting(List<RangedWeapon> list, Set<String> names, RangedWeapon w) {
-        if (names.add(normalize(w.name))) list.add(w);
     }
 
     private static Element findActiveCombatSet(Document doc) {
@@ -124,12 +126,12 @@ public final class FernkampfParityEnhancer {
         v = text(e, "kampftalent"); if (!v.isEmpty()) w.talent = v;
         v = text(e, "reichweite"); if (!v.isEmpty()) w.reichweite = v;
         v = text(e, "ladezeit"); if (!v.isEmpty()) w.lz = v;
-        w.tpkk = firstTextIfEmpty(e, w.tpkk, "tpkk", "tp/kk");
-        w.ini = firstTextIfEmpty(e, w.ini, "ini", "initiative");
-        w.mod = firstTextIfEmpty(e, w.mod, "wm", "mod", "waffenmodifikator");
-        w.munition = firstTextIfEmpty(e, w.munition, "munition", "munitionsart", "ammo");
-        w.minbf = firstTextIfEmpty(e, w.minbf, "minbf", "bfmin");
-        w.aktbf = firstTextIfEmpty(e, w.aktbf, "aktbf", "bfakt", "bf");
+        v = text(e, "tpkk"); if (!v.isEmpty()) w.tpkk = v;
+        v = text(e, "ini"); if (!v.isEmpty()) w.ini = v;
+        v = text(e, "wm"); if (!v.isEmpty()) w.mod = v;
+        v = text(e, "munition"); if (!v.isEmpty()) w.munition = v;
+        v = text(e, "minbf"); if (!v.isEmpty()) w.minbf = v;
+        v = text(e, "aktbf"); if (!v.isEmpty()) w.aktbf = v;
     }
 
     private static RangedWeapon find(List<RangedWeapon> weapons, String name) {
@@ -169,15 +171,6 @@ public final class FernkampfParityEnhancer {
         if (n.getLength() == 0) return "";
         Node x = n.item(0);
         return x.getTextContent() == null ? "" : x.getTextContent().trim();
-    }
-
-    private static String firstTextIfEmpty(Element e, String current, String... tags) {
-        if (current != null && !current.isEmpty()) return current;
-        for (String tag : tags) {
-            String v = text(e, tag);
-            if (!v.isEmpty()) return v;
-        }
-        return "";
     }
 
     private static String attr(Element e, String... keys) {
