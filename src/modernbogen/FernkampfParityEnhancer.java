@@ -10,7 +10,7 @@ import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
-/** Ergänzt den Export um Fernkampfwaffen inklusive TP/Entfernung. */
+/** Ergänzt den Export um Fernkampfwaffen inklusive TP/Entfernung und FK-Talentwert. */
 public final class FernkampfParityEnhancer {
     private FernkampfParityEnhancer() {}
 
@@ -33,23 +33,23 @@ public final class FernkampfParityEnhancer {
     private static List<RangedWeapon> read(Document doc) {
         List<RangedWeapon> out = new ArrayList<RangedWeapon>();
         Set<String> seen = new HashSet<String>();
-        collect(doc.getDocumentElement(), out, seen);
+        collect(doc.getDocumentElement(), doc, out, seen);
         return out;
     }
 
-    private static void collect(Node node, List<RangedWeapon> out, Set<String> seen) {
+    private static void collect(Node node, Document doc, List<RangedWeapon> out, Set<String> seen) {
         if (!(node instanceof Element)) return;
         Element e = (Element) node;
         String ln = localName(e).toLowerCase();
         if (isWeapon(ln)) {
-            RangedWeapon w = parse(e);
+            RangedWeapon w = parse(e, doc);
             if (!w.name.isEmpty()) {
                 String key = w.name + "|" + w.tp + "|" + w.tpEntfernung + "|" + w.reichweite + "|" + w.fk + "|" + w.lz;
                 if (seen.add(key)) out.add(w);
             }
         }
         NodeList children = e.getChildNodes();
-        for (int i = 0; i < children.getLength(); i++) collect(children.item(i), out, seen);
+        for (int i = 0; i < children.getLength(); i++) collect(children.item(i), doc, out, seen);
     }
 
     private static boolean isWeapon(String name) {
@@ -60,21 +60,32 @@ public final class FernkampfParityEnhancer {
                 || name.endsWith("fernkampfwaffe");
     }
 
-    private static RangedWeapon parse(Element e) {
+    private static RangedWeapon parse(Element e, Document doc) {
         RangedWeapon w = new RangedWeapon();
         w.name = first(e, "name", "waffenname", "bezeichnung", "bezeichner");
         w.typ = first(e, "typ", "talent", "waffentyp");
         w.tp = first(e, "tp", "trefferpunkte", "schaden");
         w.tpkk = first(e, "tpkk", "tp/kk");
-        // In der Helden-Software kann die Spalte unterschiedlich benannt sein.
-        // Wir übernehmen den bereits berechneten String der XML, statt ihn aus
-        // der Reichweite neu zu berechnen: z.B. "1/10 1/20 1/30 1/40".
         w.tpEntfernung = first(e,
                 "tpentfernung", "tpEntfernung", "tp-entfernung", "tp_entfernung",
-                "tpentf", "tpentf", "schadenentfernung", "entfernungtp");
+                "tpentf", "schadenentfernung", "entfernungtp");
         w.reichweite = first(e, "reichweite", "rw", "entfernung");
         w.lz = first(e, "ladezeit", "lz", "reload");
-        w.fk = first(e, "fk", "fernkampf", "fkwert", "wert");
+
+        // FK ist kein Waffenwert. Es ist der aktuelle Fernkampf-Talentwert
+        // (z.B. Bogen-TaW) des Helden. Deshalb zuerst direkte Angaben prüfen
+        // und anschließend den passenden Talent-Eintrag im gesamten XML suchen.
+        w.fk = first(e, "fk", "fernkampfwert", "fkwert", "fernkampf");
+        if (w.fk.isEmpty() && !w.typ.isEmpty()) {
+            w.fk = findTalentValue(doc, w.typ);
+        }
+        if (w.fk.isEmpty()) {
+            // Manche XML-Versionen speichern den Waffen-Talentnamen in einem
+            // separaten Feld. Dann nochmals über bekannte Bezeichner suchen.
+            String talentName = first(e, "talentname", "talentbezeichnung", "waffentalent");
+            if (!talentName.isEmpty()) w.fk = findTalentValue(doc, talentName);
+        }
+
         w.ini = first(e, "ini", "initiative");
         w.mod = first(e, "wm", "mod", "waffenmodifikator");
         w.munition = first(e, "munition", "munitionsart", "ammo");
@@ -82,6 +93,50 @@ public final class FernkampfParityEnhancer {
         w.aktbf = first(e, "aktbf", "bfakt", "bf");
         w.be = first(e, "be", "behinderung");
         return w;
+    }
+
+    /** Sucht den aktuellen TaW/FK-Wert des Fernkampftalents. */
+    private static String findTalentValue(Document doc, String talentName) {
+        if (doc == null || talentName == null || talentName.trim().isEmpty()) return "";
+        String wanted = normalize(talentName);
+        NodeList all = doc.getElementsByTagName("talent");
+        for (int i = 0; i < all.getLength(); i++) {
+            Node n = all.item(i);
+            if (!(n instanceof Element)) continue;
+            Element t = (Element) n;
+            String name = first(t, "name", "bezeichnung", "bezeichner");
+            if (!normalize(name).equals(wanted)) continue;
+            String value = first(t, "wert", "taw", "taW", "value", "punkte", "punktewert", "aktuell");
+            if (!value.isEmpty()) return value;
+        }
+
+        // Fallback für XML-Strukturen, in denen Talent nicht als <talent>,
+        // sondern unter einer Liste/Gruppe abgelegt ist.
+        return findTalentValueRecursive(doc.getDocumentElement(), wanted);
+    }
+
+    private static String findTalentValueRecursive(Node node, String wanted) {
+        if (!(node instanceof Element)) return "";
+        Element e = (Element) node;
+        String nodeName = localName(e).toLowerCase();
+        if (nodeName.contains("talent") || nodeName.contains("fernkampf")) {
+            String name = first(e, "name", "bezeichnung", "bezeichner", "talentname");
+            if (normalize(name).equals(wanted)) {
+                String value = first(e, "wert", "taw", "value", "punkte", "punktewert", "aktuell");
+                if (!value.isEmpty()) return value;
+            }
+        }
+        NodeList children = e.getChildNodes();
+        for (int i = 0; i < children.getLength(); i++) {
+            String result = findTalentValueRecursive(children.item(i), wanted);
+            if (!result.isEmpty()) return result;
+        }
+        return "";
+    }
+
+    private static String normalize(String value) {
+        if (value == null) return "";
+        return value.trim().replaceAll("\\s+", " ").toLowerCase();
     }
 
     private static String render(List<RangedWeapon> weapons) {
