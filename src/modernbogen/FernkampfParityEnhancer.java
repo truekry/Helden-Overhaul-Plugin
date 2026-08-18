@@ -10,7 +10,7 @@ import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
-/** Ergänzt den Export um Fernkampfwaffen, die im Python-Original als fkwaffen-Tabelle erhalten bleiben. */
+/** Ergänzt den Export um Fernkampfwaffen inklusive TP/Entfernung. */
 public final class FernkampfParityEnhancer {
     private FernkampfParityEnhancer() {}
 
@@ -20,10 +20,8 @@ public final class FernkampfParityEnhancer {
         if (weapons.isEmpty()) return html;
 
         String section = render(weapons);
-        int existing = html.indexOf("<table class=\"fkwaffen modern-section\"");
-        if (existing >= 0) return html;
+        if (html.indexOf("<table class=\"fkwaffen modern-section\"") >= 0) return html;
 
-        // Im Python-Bogen steht Fernkampf zwischen Nahkampf und Rüstungen.
         int marker = html.indexOf("<table class=\"ruestungen modern-section\"");
         if (marker < 0) marker = html.indexOf("<table class=\"schilde modern-section\"");
         if (marker < 0) marker = html.indexOf("<table class=\"inventar modern-section\"");
@@ -46,7 +44,7 @@ public final class FernkampfParityEnhancer {
         if (isWeapon(ln)) {
             RangedWeapon w = parse(e);
             if (!w.name.isEmpty()) {
-                String key = w.name + "|" + w.tp + "|" + w.reichweite + "|" + w.fk + "|" + w.lz;
+                String key = w.name + "|" + w.tp + "|" + w.tpEntfernung + "|" + w.reichweite + "|" + w.fk + "|" + w.lz;
                 if (seen.add(key)) out.add(w);
             }
         }
@@ -68,6 +66,12 @@ public final class FernkampfParityEnhancer {
         w.typ = first(e, "typ", "talent", "waffentyp");
         w.tp = first(e, "tp", "trefferpunkte", "schaden");
         w.tpkk = first(e, "tpkk", "tp/kk");
+        // In der Helden-Software kann die Spalte unterschiedlich benannt sein.
+        // Wir übernehmen den bereits berechneten String der XML, statt ihn aus
+        // der Reichweite neu zu berechnen: z.B. "1/10 1/20 1/30 1/40".
+        w.tpEntfernung = first(e,
+                "tpentfernung", "tpEntfernung", "tp-entfernung", "tp_entfernung",
+                "tpentf", "tpentf", "schadenentfernung", "entfernungtp");
         w.reichweite = first(e, "reichweite", "rw", "entfernung");
         w.lz = first(e, "ladezeit", "lz", "reload");
         w.fk = first(e, "fk", "fernkampf", "fkwert", "wert");
@@ -83,17 +87,19 @@ public final class FernkampfParityEnhancer {
     private static String render(List<RangedWeapon> weapons) {
         StringBuilder sb = new StringBuilder();
         sb.append("<table class=\"fkwaffen modern-section\" id=\"section-fernkampfwaffen-10\">");
-        sb.append("<tr><th class=\"titel\" colspan=\"12\">Fernkampfwaffen</th></tr>");
+        sb.append("<tr><th class=\"titel\" colspan=\"13\">Fernkampfwaffen</th></tr>");
         sb.append("<tr><td class=\"mitte\"><div class=\"mitte_innen\">");
         sb.append("<table class=\"fkwaffen gitternetz\"><thead><tr>");
         sb.append("<th class=\"name\">Fernkampfwaffe</th>");
         sb.append("<th class=\"typ\">Typ</th><th class=\"tp\">TP</th><th class=\"tpkk\">TP/KK</th>");
+        sb.append("<th class=\"tp-entfernung\">TP/Entfernung</th>");
         sb.append("<th class=\"reichweite\">Reichweite</th><th class=\"lz\">LZ</th><th class=\"fk\">FK</th>");
         sb.append("<th class=\"ini\">INI</th><th class=\"wm\">WM</th><th class=\"munition\">Munition</th>");
         sb.append("<th class=\"minbf\">min BF</th><th class=\"aktbf\">akt BF</th></tr></thead><tbody>");
         for (RangedWeapon w : weapons) {
             sb.append("<tr>");
             cell(sb, "name", w.name); cell(sb, "typ", w.typ); cell(sb, "tp", w.tp); cell(sb, "tpkk", w.tpkk);
+            cell(sb, "tp-entfernung", w.tpEntfernung);
             cell(sb, "reichweite", w.reichweite); cell(sb, "lz", w.lz); cell(sb, "fk", w.fk);
             cell(sb, "ini", w.ini); cell(sb, "wm", w.mod); cell(sb, "munition", w.munition);
             cell(sb, "minbf", w.minbf); cell(sb, "aktbf", w.aktbf);
@@ -154,7 +160,7 @@ public final class FernkampfParityEnhancer {
     }
 
     private static final class RangedWeapon {
-        String name = "", typ = "", tp = "", tpkk = "", reichweite = "", lz = "";
+        String name = "", typ = "", tp = "", tpkk = "", tpEntfernung = "", reichweite = "", lz = "";
         String fk = "", ini = "", mod = "", munition = "", minbf = "", aktbf = "", be = "";
     }
 }
