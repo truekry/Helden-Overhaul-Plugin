@@ -50,7 +50,7 @@ public class ModernBogenPlugin implements HeldenXMLDatenPlugin3 {
         Document calculatedDoc = getCalculatedCombatXml();
         String heldName = HtmlGenerator.extractHeldName(heldDoc);
         JFileChooser chooser = new JFileChooser(); chooser.setDialogTitle("Helden-Overhaul: HTML exportieren");
-        chooser.setSelectedFile(new File(sanitizeFilename(heldName) + "_modern.html"));
+        chooser.setSelectedFile(new File(sanitizeFilename(heldName) + "_modern.html");
         chooser.setFileFilter(new FileNameExtensionFilter("HTML-Dateien", "html", "htm"));
         if (chooser.showSaveDialog(frame) != JFileChooser.APPROVE_OPTION) return null;
         File htmlFile = chooser.getSelectedFile();
@@ -68,55 +68,32 @@ public class ModernBogenPlugin implements HeldenXMLDatenPlugin3 {
 
     /** Holt die normale Heldendaten-XML. */
     private Document getCurrentHeldenXml() {
-        if (dai == null) return null;
-        String[][] variants = new String[][] {{"held", "selected", "xml", "2"}, {"held", "selected", "xml", "1"}, {"held", "selected", "xml", ""}, {"held", "active", "xml", "2"}};
-        Document best = null; int bestScore = -1;
-        for (int i = 0; i < variants.length; i++) {
-            try {
-                Document request = newRequest(variants[i][0], variants[i][1], variants[i][2], variants[i][3]);
-                Object result = dai.exec(request); if (!(result instanceof Document)) continue; Document doc = (Document) result;
-                int score = doc.getElementsByTagName("zauber").getLength() * 10 + doc.getElementsByTagName("zauberliste").getLength() * 5 + doc.getElementsByTagName("talent").getLength() + doc.getElementsByTagName("talentliste").getLength();
-                if (doc.getDocumentElement() != null && "daten".equalsIgnoreCase(doc.getDocumentElement().getTagName())) score += 2;
-                if (score > bestScore) { bestScore = score; best = doc; }
-            } catch (Exception ex) { ex.printStackTrace(); }
-        }
-        return best;
+        return execHeldRequest("selected");
     }
 
     /**
-     * Holt die von der Helden-Software bereits berechneten Kampfwerte.
-     * Das Beispiel-Plugin nutzt denselben DatenAustausch3Interface/dai.exec()-Mechanismus.
+     * Holt exakt wie das Dragonjester-Beispiel die vom Host gelieferten Heldendaten.
+     * Das Kampfset ist Teil dieser Antwort; eine künstliche Versionsauswahl kann
+     * sonst eine Antwort ohne Fernkampfwaffen auswählen.
      */
     private Document getCalculatedCombatXml() {
-        if (dai == null) return null;
-        String[][] variants = new String[][] {
-            {"held", "selected", "xml", "3"},
-            {"held", "selected", "xml", "2"},
-            {"held", "selected", "xml", "1"},
-            {"held", "selected", "xml", ""}
-        };
-        Document best = null; int bestScore = -1;
-        for (int i = 0; i < variants.length; i++) {
-            try {
-                Document request = newRequest(variants[i][0], variants[i][1], variants[i][2], variants[i][3]);
-                Object result = dai.exec(request); if (!(result instanceof Document)) continue;
-                Document doc = (Document) result;
-                int score = doc.getElementsByTagName("kampfset").getLength() * 100
-                        + doc.getElementsByTagName("fernkampfwaffe").getLength() * 20
-                        + doc.getElementsByTagName("nahkampfwaffe").getLength() * 10
-                        + doc.getElementsByTagName("ruestungzonen").getLength() * 5;
-                if (score > bestScore) { bestScore = score; best = doc; }
-            } catch (Exception ex) { ex.printStackTrace(); }
-        }
-        return best;
+        return execHeldRequest("selected");
     }
 
-    private Document newRequest(String actionName, String id, String format, String version) throws Exception {
-        Document request = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument();
-        Element action = request.createElement("action"); request.appendChild(action);
-        action.setAttribute("action", actionName); action.setAttribute("id", id); action.setAttribute("format", format);
-        if (version != null && version.length() > 0) action.setAttribute("version", version);
-        return request;
+    private Document execHeldRequest(String id) {
+        if (dai == null) return null;
+        try {
+            Document request = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument();
+            Element action = request.createElement("action"); request.appendChild(action);
+            action.setAttribute("action", "held");
+            action.setAttribute("id", id);
+            action.setAttribute("format", "xml");
+            Object result = dai.exec(request);
+            return result instanceof Document ? (Document) result : null;
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            return null;
+        }
     }
 
     private static void copyResource(String resourceName, File target) throws Exception {
