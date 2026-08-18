@@ -2,7 +2,6 @@ package modernbogen;
 
 import helden.plugin.HeldenXMLDatenPlugin3;
 import helden.plugin.datenxmlplugin.DatenAustausch3Interface;
-import java.awt.Desktop;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.File;
@@ -23,7 +22,7 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
-/** Helden-Software-Plugin: erzeugt einen modernen HTML-Charakterbogen direkt aus der XML-API. */
+/** Helden-Software-Plugin: erzeugt einen modernen HTML-Charakterbogen. */
 public class ModernBogenPlugin implements HeldenXMLDatenPlugin3 {
     private DatenAustausch3Interface dai;
     private JFrame frame;
@@ -44,9 +43,11 @@ public class ModernBogenPlugin implements HeldenXMLDatenPlugin3 {
         export.addActionListener(new ActionListener() { @Override public void actionPerformed(ActionEvent e) { exportModernBogen(); } });
         liste.add(export); return liste;
     }
+
     private File exportModernBogen() {
         Document heldDoc = getCurrentHeldenXml();
         if (heldDoc == null) { JOptionPane.showMessageDialog(frame, "Kein Held geladen oder XML konnte nicht gelesen werden.", "Fehler", JOptionPane.ERROR_MESSAGE); return null; }
+        Document calculatedDoc = getCalculatedCombatXml();
         String heldName = HtmlGenerator.extractHeldName(heldDoc);
         JFileChooser chooser = new JFileChooser(); chooser.setDialogTitle("Helden-Overhaul: HTML exportieren");
         chooser.setSelectedFile(new File(sanitizeFilename(heldName) + "_modern.html"));
@@ -57,22 +58,22 @@ public class ModernBogenPlugin implements HeldenXMLDatenPlugin3 {
         try {
             String html = HtmlGenerator.generate(heldDoc);
             html = HtmlParityEnhancer.enhance(html, heldDoc);
-            html = FernkampfParityEnhancer.enhance(html, heldDoc);
+            html = FernkampfParityEnhancer.enhance(html, heldDoc, calculatedDoc);
             Writer w = new OutputStreamWriter(new FileOutputStream(htmlFile), StandardCharsets.UTF_8);
             try { w.write(html); } finally { w.close(); }
             JOptionPane.showMessageDialog(frame, "Gespeichert:\n" + htmlFile.getAbsolutePath(), "Fertig", JOptionPane.INFORMATION_MESSAGE);
             return htmlFile;
         } catch (Exception ex) { ex.printStackTrace(); JOptionPane.showMessageDialog(frame, "Fehler beim Speichern:\n" + ex.getMessage(), "Fehler", JOptionPane.ERROR_MESSAGE); return null; }
     }
+
+    /** Holt die normale Heldendaten-XML. */
     private Document getCurrentHeldenXml() {
         if (dai == null) return null;
         String[][] variants = new String[][] {{"held", "selected", "xml", "2"}, {"held", "selected", "xml", "1"}, {"held", "selected", "xml", ""}, {"held", "active", "xml", "2"}};
         Document best = null; int bestScore = -1;
         for (int i = 0; i < variants.length; i++) {
             try {
-                Document request = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument(); Element action = request.createElement("action"); request.appendChild(action);
-                action.setAttribute("action", variants[i][0]); action.setAttribute("id", variants[i][1]); action.setAttribute("format", variants[i][2]);
-                if (variants[i][3].length() > 0) action.setAttribute("version", variants[i][3]);
+                Document request = newRequest(variants[i][0], variants[i][1], variants[i][2], variants[i][3]);
                 Object result = dai.exec(request); if (!(result instanceof Document)) continue; Document doc = (Document) result;
                 int score = doc.getElementsByTagName("zauber").getLength() * 10 + doc.getElementsByTagName("zauberliste").getLength() * 5 + doc.getElementsByTagName("talent").getLength() + doc.getElementsByTagName("talentliste").getLength();
                 if (doc.getDocumentElement() != null && "daten".equalsIgnoreCase(doc.getDocumentElement().getTagName())) score += 2;
@@ -81,6 +82,43 @@ public class ModernBogenPlugin implements HeldenXMLDatenPlugin3 {
         }
         return best;
     }
+
+    /**
+     * Holt die von der Helden-Software bereits berechneten Kampfwerte.
+     * Das Beispiel-Plugin nutzt denselben DatenAustausch3Interface/dai.exec()-Mechanismus.
+     */
+    private Document getCalculatedCombatXml() {
+        if (dai == null) return null;
+        String[][] variants = new String[][] {
+            {"held", "selected", "xml", "3"},
+            {"held", "selected", "xml", "2"},
+            {"held", "selected", "xml", "1"},
+            {"held", "selected", "xml", ""}
+        };
+        Document best = null; int bestScore = -1;
+        for (int i = 0; i < variants.length; i++) {
+            try {
+                Document request = newRequest(variants[i][0], variants[i][1], variants[i][2], variants[i][3]);
+                Object result = dai.exec(request); if (!(result instanceof Document)) continue;
+                Document doc = (Document) result;
+                int score = doc.getElementsByTagName("kampfset").getLength() * 100
+                        + doc.getElementsByTagName("fernkampfwaffe").getLength() * 20
+                        + doc.getElementsByTagName("nahkampfwaffe").getLength() * 10
+                        + doc.getElementsByTagName("ruestungzonen").getLength() * 5;
+                if (score > bestScore) { bestScore = score; best = doc; }
+            } catch (Exception ex) { ex.printStackTrace(); }
+        }
+        return best;
+    }
+
+    private Document newRequest(String actionName, String id, String format, String version) throws Exception {
+        Document request = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument();
+        Element action = request.createElement("action"); request.appendChild(action);
+        action.setAttribute("action", actionName); action.setAttribute("id", id); action.setAttribute("format", format);
+        if (version != null && version.length() > 0) action.setAttribute("version", version);
+        return request;
+    }
+
     private static void copyResource(String resourceName, File target) throws Exception {
         InputStream in = ModernBogenPlugin.class.getResourceAsStream("/" + resourceName);
         if (in == null) in = ModernBogenPlugin.class.getResourceAsStream("/resources/" + resourceName);
