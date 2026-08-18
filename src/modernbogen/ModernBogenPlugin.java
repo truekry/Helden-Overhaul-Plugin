@@ -50,7 +50,7 @@ public class ModernBogenPlugin implements HeldenXMLDatenPlugin3 {
         Document calculatedDoc = getCalculatedCombatXml();
         String heldName = HtmlGenerator.extractHeldName(heldDoc);
         JFileChooser chooser = new JFileChooser(); chooser.setDialogTitle("Helden-Overhaul: HTML exportieren");
-        chooser.setSelectedFile(new File(sanitizeFilename(heldName) + "_modern.html");
+        chooser.setSelectedFile(new File(sanitizeFilename(heldName) + "_modern.html"));
         chooser.setFileFilter(new FileNameExtensionFilter("HTML-Dateien", "html", "htm"));
         if (chooser.showSaveDialog(frame) != JFileChooser.APPROVE_OPTION) return null;
         File htmlFile = chooser.getSelectedFile();
@@ -66,19 +66,10 @@ public class ModernBogenPlugin implements HeldenXMLDatenPlugin3 {
         } catch (Exception ex) { ex.printStackTrace(); JOptionPane.showMessageDialog(frame, "Fehler beim Speichern:\n" + ex.getMessage(), "Fehler", JOptionPane.ERROR_MESSAGE); return null; }
     }
 
-    /** Holt die normale Heldendaten-XML. */
-    private Document getCurrentHeldenXml() {
-        return execHeldRequest("selected");
-    }
+    private Document getCurrentHeldenXml() { return execHeldRequest("selected"); }
 
-    /**
-     * Holt exakt wie das Dragonjester-Beispiel die vom Host gelieferten Heldendaten.
-     * Das Kampfset ist Teil dieser Antwort; eine künstliche Versionsauswahl kann
-     * sonst eine Antwort ohne Fernkampfwaffen auswählen.
-     */
-    private Document getCalculatedCombatXml() {
-        return execHeldRequest("selected");
-    }
+    /** Holt exakt wie das Dragonjester-Beispiel die Heldendaten inklusive Kampfsets. */
+    private Document getCalculatedCombatXml() { return execHeldRequest("selected"); }
 
     private Document execHeldRequest(String id) {
         if (dai == null) return null;
