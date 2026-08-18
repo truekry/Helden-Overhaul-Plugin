@@ -37,6 +37,7 @@ public class ModernBogenPlugin implements HeldenXMLDatenPlugin3 {
     @Override public boolean hatTab() { return false; }
     @Override public JComponent getPanel() { return null; }
     @Override public void click() { exportModernBogen(); }
+
     @Override public ArrayList<JComponent> getUntermenus() {
         ArrayList<JComponent> liste = new ArrayList<JComponent>();
         JMenuItem export = new JMenuItem("HTML exportieren");
@@ -50,15 +51,21 @@ public class ModernBogenPlugin implements HeldenXMLDatenPlugin3 {
 
     private File exportModernBogen() {
         Document heldDoc = getCurrentHeldenXml();
-        if (heldDoc == null) { JOptionPane.showMessageDialog(frame, "Kein Held geladen oder XML konnte nicht gelesen werden.", "Fehler", JOptionPane.ERROR_MESSAGE); return null; }
+        if (heldDoc == null) {
+            JOptionPane.showMessageDialog(frame, "Kein Held geladen oder XML konnte nicht gelesen werden.", "Fehler", JOptionPane.ERROR_MESSAGE);
+            return null;
+        }
         Document calculatedDoc = getCalculatedCombatXml();
         String heldName = HtmlGenerator.extractHeldName(heldDoc);
-        JFileChooser chooser = new JFileChooser(); chooser.setDialogTitle("Helden-Overhaul: HTML exportieren");
+        JFileChooser chooser = new JFileChooser();
+        chooser.setDialogTitle("Helden-Overhaul: HTML exportieren");
         chooser.setSelectedFile(new File(sanitizeFilename(heldName) + "_modern.html"));
         chooser.setFileFilter(new FileNameExtensionFilter("HTML-Dateien", "html", "htm"));
         if (chooser.showSaveDialog(frame) != JFileChooser.APPROVE_OPTION) return null;
         File htmlFile = chooser.getSelectedFile();
-        if (!htmlFile.getName().toLowerCase().endsWith(".html") && !htmlFile.getName().toLowerCase().endsWith(".htm")) htmlFile = new File(htmlFile.getParentFile(), htmlFile.getName() + ".html");
+        if (!htmlFile.getName().toLowerCase().endsWith(".html") && !htmlFile.getName().toLowerCase().endsWith(".htm")) {
+            htmlFile = new File(htmlFile.getParentFile(), htmlFile.getName() + ".html");
+        }
         try {
             String html = HtmlGenerator.generate(heldDoc);
             html = HtmlParityEnhancer.enhance(html, heldDoc);
@@ -67,17 +74,25 @@ public class ModernBogenPlugin implements HeldenXMLDatenPlugin3 {
             try { w.write(html); } finally { w.close(); }
             JOptionPane.showMessageDialog(frame, "Gespeichert:\n" + htmlFile.getAbsolutePath(), "Fertig", JOptionPane.INFORMATION_MESSAGE);
             return htmlFile;
-        } catch (Exception ex) { ex.printStackTrace(); JOptionPane.showMessageDialog(frame, "Fehler beim Speichern:\n" + ex.getMessage(), "Fehler", JOptionPane.ERROR_MESSAGE); return null; }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            JOptionPane.showMessageDialog(frame, "Fehler beim Speichern:\n" + ex.getMessage(), "Fehler", JOptionPane.ERROR_MESSAGE);
+            return null;
+        }
     }
 
-    /** Exportiert die vollständige XML-Antwort der Plugin-API zur Diagnose. */
+    /**
+     * Exportiert beide relevanten Antworten der Plugin-API. So sehen wir sowohl
+     * die normalen Heldendaten als auch die von der Software berechneten Daten.
+     */
     private void exportDiagnose() {
-        Document doc = getCurrentHeldenXml();
-        if (doc == null) {
+        Document heldDoc = getCurrentHeldenXml();
+        Document calculatedDoc = getCalculatedCombatXml();
+        if (heldDoc == null && calculatedDoc == null) {
             JOptionPane.showMessageDialog(frame, "Die Helden-Software hat keine Heldendaten zurückgegeben.", "Diagnose", JOptionPane.ERROR_MESSAGE);
             return;
         }
-        String heldName = HtmlGenerator.extractHeldName(doc);
+        String heldName = heldDoc == null ? "Held" : HtmlGenerator.extractHeldName(heldDoc);
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Heldendaten-Diagnose speichern");
         chooser.setSelectedFile(new File(sanitizeFilename(heldName) + "_diagnose.xml"));
@@ -86,8 +101,11 @@ public class ModernBogenPlugin implements HeldenXMLDatenPlugin3 {
         File file = chooser.getSelectedFile();
         if (!file.getName().toLowerCase().endsWith(".xml")) file = new File(file.getParentFile(), file.getName() + ".xml");
         try {
-            HeldenDatenDiagnose.export(doc, file);
-            JOptionPane.showMessageDialog(frame, "Diagnose gespeichert:\n" + file.getAbsolutePath() + "\n\nDie Datei enthält die vollständige XML-Antwort der Helden-Software.", "Diagnose", JOptionPane.INFORMATION_MESSAGE);
+            HeldenDatenDiagnose.export(heldDoc, calculatedDoc, file);
+            JOptionPane.showMessageDialog(frame,
+                    "Diagnose gespeichert:\n" + file.getAbsolutePath()
+                    + "\n\nDie Datei enthält die normalen und die berechneten Daten, die über die Plugin-API geliefert wurden.",
+                    "Diagnose", JOptionPane.INFORMATION_MESSAGE);
         } catch (Exception ex) {
             ex.printStackTrace();
             JOptionPane.showMessageDialog(frame, "Fehler beim Diagnoseexport:\n" + ex.getMessage(), "Diagnose", JOptionPane.ERROR_MESSAGE);
@@ -101,11 +119,17 @@ public class ModernBogenPlugin implements HeldenXMLDatenPlugin3 {
         if (dai == null) return null;
         try {
             Document request = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument();
-            Element action = request.createElement("action"); request.appendChild(action);
-            action.setAttribute("action", "held"); action.setAttribute("id", id); action.setAttribute("format", "xml");
+            Element action = request.createElement("action");
+            request.appendChild(action);
+            action.setAttribute("action", "held");
+            action.setAttribute("id", id);
+            action.setAttribute("format", "xml");
             Object result = dai.exec(request);
             return result instanceof Document ? (Document) result : null;
-        } catch (Exception ex) { ex.printStackTrace(); return null; }
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            return null;
+        }
     }
 
     private static void copyResource(String resourceName, File target) throws Exception {
@@ -113,7 +137,18 @@ public class ModernBogenPlugin implements HeldenXMLDatenPlugin3 {
         if (in == null) in = ModernBogenPlugin.class.getResourceAsStream("/resources/" + resourceName);
         if (in == null) in = ModernBogenPlugin.class.getClassLoader().getResourceAsStream(resourceName);
         if (in == null) throw new IllegalStateException("Ressource nicht gefunden: " + resourceName);
-        try { FileOutputStream out = new FileOutputStream(target); try { byte[] buf = new byte[8192]; int n; while ((n = in.read(buf)) >= 0) out.write(buf, 0, n); } finally { out.close(); } } finally { in.close(); }
+        try {
+            FileOutputStream out = new FileOutputStream(target);
+            try {
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) >= 0) out.write(buf, 0, n);
+            } finally { out.close(); }
+        } finally { in.close(); }
     }
-    private static String sanitizeFilename(String name) { if (name == null || name.trim().isEmpty()) return "Held"; return name.replaceAll("[\\\\/:*?\"<>|]", "_").trim(); }
+
+    private static String sanitizeFilename(String name) {
+        if (name == null || name.trim().isEmpty()) return "Held";
+        return name.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
+    }
 }
