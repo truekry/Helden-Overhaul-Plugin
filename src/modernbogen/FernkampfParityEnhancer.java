@@ -13,23 +13,63 @@ import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
-/** Fernkampf-Parität: Zuordnung aus XML, Waffenwerte bevorzugt aus nativer HS-HTML-Ausgabe. */
+/** Fernkampf-Parität: XML für Zuordnung/FK, native HTML für Waffenwerte. */
 public final class FernkampfParityEnhancer {
     private FernkampfParityEnhancer() {}
 
     public static String enhance(String html, Document doc) { return enhance(html, doc, null); }
 
     public static String enhance(String html, Document doc, String nativeHtml) {
-        if (html == null || doc == null) return html;
-        List<RangedWeapon> weapons = read(doc);
-        if (weapons.isEmpty() || html.contains("<table class=\"fkwaffen modern-section\"")) return html;
-        if (nativeHtml != null && !nativeHtml.trim().isEmpty()) mergeNativeHtml(weapons, nativeHtml);
+        if (html == null) return html;
+        if (html.contains("id=\"section-fernkampfwaffen-10\"") || html.contains("class=\"fkwaffen modern-section\"")) return html;
+
+        List<RangedWeapon> weapons = doc == null ? new ArrayList<RangedWeapon>() : read(doc);
+        if (nativeHtml != null && !nativeHtml.trim().isEmpty()) {
+            Map<String, NativeRow> rows = parseNativeRows(nativeHtml);
+            mergeNative(weapons, rows);
+            // Falls die XML-Abfrage der Plugin-API keine Heldendaten geliefert
+            // hat, darf die native HTML-Ausgabe den Bereich trotzdem erzeugen.
+            if (weapons.isEmpty()) {
+                for (NativeRow r : rows.values()) {
+                    if (!r.name.isEmpty()) {
+                        RangedWeapon w = new RangedWeapon();
+                        w.name = r.name;
+                        copy(w, r);
+                        weapons.add(w);
+                    }
+                }
+            }
+        }
+        if (weapons.isEmpty()) return html;
+
         String section = render(weapons);
-        int marker = html.indexOf("<table class=\"ruestungen modern-section\"");
-        if (marker < 0) marker = html.indexOf("<table class=\"schilde modern-section\"");
-        if (marker < 0) marker = html.indexOf("<table class=\"inventar modern-section\"");
-        if (marker < 0) return html;
+        int marker = findInsertionPoint(html);
+        if (marker < 0) {
+            // Als letzter Fallback vor </body>. So verschwindet der FK-Bereich
+            // nicht nur deshalb, weil sich eine andere Sektion geändert hat.
+            int body = html.toLowerCase().lastIndexOf("</body>");
+            marker = body >= 0 ? body : html.length();
+        }
         return html.substring(0, marker) + section + "\n" + html.substring(marker);
+    }
+
+    private static int findInsertionPoint(String html) {
+        String[] markers = {
+            "<table class=\"ruestungen modern-section\"",
+            "<table class=\"schilder modern-section\"",
+            "<table class=\"inventar modern-section\"",
+            "id=\"section-ruestungen-11\"",
+            "id=\"section-schilder-12\"",
+            "id=\"section-inventar-10\""
+        };
+        for (String marker : markers) {
+            int p = html.indexOf(marker);
+            if (p >= 0) {
+                int table = html.lastIndexOf("<table", p);
+                return table >= 0 ? table : p;
+            }
+        }
+        return -1;
     }
 
     private static List<RangedWeapon> read(Document doc) {
@@ -58,10 +98,9 @@ public final class FernkampfParityEnhancer {
             if (!t.isEmpty()) w.talent = t;
         }
         w.taw = findTalentValue(doc, w.talent);
-        // FK entspricht dem AT-Wert des Fernkampftalents. In der XML ist die
-        // relevante Basis separat als Eigenschaft gespeichert; bei DSA wird
-        // der Fernkampf-AT daraus und dem TaW gebildet.
         w.fkBasis = findPropertyValue(doc, "fk");
+        // FK = AT des zugeordneten Fernkampftalents. Die FK-Basis wird mit
+        // dem halben TaW (abgerundet) ergänzt.
         w.fk = Integer.toString(w.fkBasis + Math.floorDiv(w.taw, 2));
         if (weaponData != null) {
             w.tp = findNestedAttribute(weaponData, "tp", "trefferpunkte", "schaden");
@@ -80,54 +119,60 @@ public final class FernkampfParityEnhancer {
         return w;
     }
 
-    /** Liest die native HTML-Ausgabe der Helden-Software spaltenorientiert. */
-    private static void mergeNativeHtml(List<RangedWeapon> weapons, String nativeHtml) {
-        Map<String, NativeRow> rows = parseNativeRows(nativeHtml);
+    private static void mergeNative(List<RangedWeapon> weapons, Map<String, NativeRow> rows) {
         for (RangedWeapon w : weapons) {
             NativeRow r = rows.get(normalize(w.name));
-            if (r == null) continue;
-            if (!r.tp.isEmpty()) w.tp = r.tp;
-            if (!r.tpkk.isEmpty()) w.tpkk = r.tpkk;
-            if (!r.tpEntfernung.isEmpty()) w.tpEntfernung = r.tpEntfernung;
-            if (!r.reichweite.isEmpty()) w.reichweite = r.reichweite;
-            if (!r.lz.isEmpty()) w.lz = r.lz;
-            if (!r.ini.isEmpty()) w.ini = r.ini;
-            if (!r.mod.isEmpty()) w.mod = r.mod;
-            if (!r.munition.isEmpty()) w.munition = r.munition;
-            if (!r.minbf.isEmpty()) w.minbf = r.minbf;
-            if (!r.aktbf.isEmpty()) w.aktbf = r.aktbf;
+            if (r != null) copy(w, r);
         }
+    }
+
+    private static void copy(RangedWeapon w, NativeRow r) {
+        if (!r.tp.isEmpty()) w.tp = r.tp;
+        if (!r.tpkk.isEmpty()) w.tpkk = r.tpkk;
+        if (!r.tpEntfernung.isEmpty()) w.tpEntfernung = r.tpEntfernung;
+        if (!r.reichweite.isEmpty()) w.reichweite = r.reichweite;
+        if (!r.lz.isEmpty()) w.lz = r.lz;
+        if (!r.ini.isEmpty()) w.ini = r.ini;
+        if (!r.mod.isEmpty()) w.mod = r.mod;
+        if (!r.munition.isEmpty()) w.munition = r.munition;
+        if (!r.minbf.isEmpty()) w.minbf = r.minbf;
+        if (!r.aktbf.isEmpty()) w.aktbf = r.aktbf;
     }
 
     private static Map<String, NativeRow> parseNativeRows(String html) {
         Map<String, NativeRow> result = new HashMap<String, NativeRow>();
-        Pattern tablePattern = Pattern.compile("(?is)<table\\b[^>]*>.*?</table>");
-        Matcher tm = tablePattern.matcher(html);
+        Matcher tm = Pattern.compile("(?is)<table\\b[^>]*>.*?</table>").matcher(html);
         while (tm.find()) {
             String table = tm.group();
-            String low = stripTags(table).toLowerCase();
+            String low = clean(table).toLowerCase();
             if (!low.contains("fernkampf") && !low.contains("reichweite") && !low.contains("tp/entfernung")) continue;
-            List<String> headers = new ArrayList<String>();
-            Matcher hm = Pattern.compile("(?is)<th\\b[^>]*>(.*?)</th>").matcher(table);
-            while (hm.find()) headers.add(clean(hm.group(1)));
+            List<String> headers = cells(table, "th");
+            if (headers.isEmpty()) headers = cells(table, "td");
             if (headers.isEmpty()) continue;
             Matcher rm = Pattern.compile("(?is)<tr\\b[^>]*>(.*?)</tr>").matcher(table);
+            boolean first = true;
             while (rm.find()) {
-                List<String> cells = new ArrayList<String>();
-                Matcher cm = Pattern.compile("(?is)<(?:td|th)\\b[^>]*>(.*?)</(?:td|th)>").matcher(rm.group(1));
-                while (cm.find()) cells.add(clean(cm.group(1)));
-                if (cells.size() < 2) continue;
+                List<String> cs = cells(rm.group(1), "td");
+                if (cs.size() < 2) continue;
+                if (first && cells(rm.group(1), "th").size() > 0) { first = false; continue; }
                 NativeRow row = new NativeRow();
-                for (int i = 0; i < headers.size() && i < cells.size(); i++) set(row, headers.get(i), cells.get(i));
+                for (int i = 0; i < headers.size() && i < cs.size(); i++) set(row, headers.get(i), cs.get(i));
                 if (!row.name.isEmpty()) result.put(normalize(row.name), row);
             }
         }
         return result;
     }
 
+    private static List<String> cells(String html, String tag) {
+        List<String> out = new ArrayList<String>();
+        Matcher m = Pattern.compile("(?is)<" + tag + "\\b[^>]*>(.*?)</" + tag + ">").matcher(html);
+        while (m.find()) out.add(clean(m.group(1)));
+        return out;
+    }
+
     private static void set(NativeRow r, String header, String value) {
         String h = normalize(header).replace(" ", "");
-        if (h.contains("fernkampfwaffe") || h.equals("waffe")) r.name = value;
+        if (h.contains("fernkampfwaffe") || h.equals("waffe") || h.equals("name")) r.name = value;
         else if (h.equals("tp")) r.tp = value;
         else if (h.contains("tp/kk") || h.equals("tpkk")) r.tpkk = value;
         else if (h.contains("tp/entfernung") || h.contains("tpentfernung")) r.tpEntfernung = value;
@@ -140,8 +185,11 @@ public final class FernkampfParityEnhancer {
         else if (h.contains("aktbf")) r.aktbf = value;
     }
 
-    private static String clean(String s) { return stripTags(s).replace("&nbsp;", " ").replaceAll("\\s+", " ").trim(); }
-    private static String stripTags(String s) { return s.replaceAll("(?is)<[^>]+>", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">"); }
+    private static String clean(String s) {
+        return s.replaceAll("(?is)<script.*?</script>|<style.*?</style>", "")
+                .replaceAll("(?is)<[^>]+>", " ").replace("&nbsp;", " ").replace("&amp;", "&")
+                .replace("&lt;", "<").replace("&gt;", ">").replaceAll("\\s+", " ").trim();
+    }
 
     private static Element findWeaponData(Document doc, String weaponName) {
         if (weaponName == null || weaponName.isEmpty()) return null;
@@ -181,7 +229,6 @@ public final class FernkampfParityEnhancer {
         return b.append("</tbody></table></div></td></tr></table>").toString();}
     private static void th(StringBuilder b,String c,String v){b.append("<th class=\"").append(c).append("\">").append(v).append("</th>");}
     private static void td(StringBuilder b,String c,String v){b.append("<td class=\"").append(c).append("\">").append(esc(v)).append("</td>");}
-
     private static final class NativeRow{String name="",tp="",tpkk="",tpEntfernung="",reichweite="",lz="",ini="",mod="",munition="",minbf="",aktbf="";}
     private static final class RangedWeapon{String name="",talent="",tp="",tpkk="",tpEntfernung="",reichweite="",lz="",fk="",ini="",mod="",munition="",minbf="",aktbf="";int taw=0,fkBasis=0;}
 }
