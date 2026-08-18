@@ -1,4 +1,4 @@
-# Helden-Overhaul – Plugin für die Helden-Software
+# Helden-Overhaul – Plugin für die Helden-Software 🎲
 
 Dieses Plugin bringt **Helden-Overhaul** direkt in die [Helden-Software](https://www.helden-software.de/) (DSA / Das Schwarze Auge). Statt eines nachträglichen Python-Exports erzeugt es aus dem **aktuellen Held** über die Plugin-API einen modernen, interaktiven HTML-Charakterbogen.
 
@@ -7,7 +7,7 @@ Dieses Plugin bringt **Helden-Overhaul** direkt in die [Helden-Software](https:/
 
 ---
 
-## Features
+## ✨ Features
 
 - Modernes Charakterbogen-Layout mit Navigation und Dark Mode
 - Interaktive Würfel: Eigenschaften (MU, KL, IN …), Talente, Zauber, Initiative
@@ -29,7 +29,7 @@ Dieses Plugin bringt **Helden-Overhaul** direkt in die [Helden-Software](https:/
 
 ---
 
-## Nutzung
+## 🚀 Nutzung
 
 1. Held in der Helden-Software öffnen.
 2. **Erweiterungen → Helden-Overhaul → HTML exportieren**.
@@ -38,6 +38,9 @@ Dieses Plugin bringt **Helden-Overhaul** direkt in die [Helden-Software](https:/
 
 ---
 
+![Vorschau](https://files.catbox.moe/dp2t6q.png)
+
+---
 ## Hinweise
 
 - Entwickelt mit Unterstützung generativer KI.
