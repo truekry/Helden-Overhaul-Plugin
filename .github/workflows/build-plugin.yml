@@ -1,0 +1,29 @@
+name: Build Plugin
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+      - name: Build JAR
+        run: |
+          set -e
+          rm -rf build ModernBogenPlugin.jar
+          mkdir -p build
+          javac -encoding UTF-8 -d build \
+            src/helden/plugin/*.java \
+            src/helden/plugin/datenxmlplugin/*.java \
+            src/modernbogen/*.java
+          jar cfm ModernBogenPlugin.jar MANIFEST.MF -C build .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ModernBogenPlugin
+          path: ModernBogenPlugin.jar
