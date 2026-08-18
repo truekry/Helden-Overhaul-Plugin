@@ -134,6 +134,12 @@ public class ModernBogenPlugin implements HeldenXMLDatenPlugin3 {
 
         try {
             String html = HtmlGenerator.generate(heldDoc);
+            // Nach dem normalen Generator werden die Teile ergänzt/normalisiert,
+            // die die Python-Version aus dem vollständigen Charakterbogen
+            // übernimmt. Besonders wichtig: Zonenrüstungen aus allen bekannten
+            // XML/API-Varianten inklusive Gesamtzeile für den BE-Abzug.
+            html = HtmlParityEnhancer.enhance(html, heldDoc);
+
             Writer w = new OutputStreamWriter(new FileOutputStream(htmlFile), StandardCharsets.UTF_8);
             try {
                 w.write(html);
