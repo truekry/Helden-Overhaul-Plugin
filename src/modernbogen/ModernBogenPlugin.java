@@ -26,6 +26,7 @@ import org.w3c.dom.Element;
 public class ModernBogenPlugin implements HeldenXMLDatenPlugin3 {
     private DatenAustausch3Interface dai;
     private JFrame frame;
+
     public ModernBogenPlugin() { super(); }
     @Override public String getMenuName() { return "Helden-Overhaul"; }
     @Override public String getToolTipText() { return "Erzeugt einen modernen HTML-Charakterbogen (Fantasy-Layout, Würfel, Dark Mode)"; }
@@ -41,37 +42,50 @@ public class ModernBogenPlugin implements HeldenXMLDatenPlugin3 {
     @Override public ArrayList<JComponent> getUntermenus() {
         ArrayList<JComponent> liste = new ArrayList<JComponent>();
         JMenuItem export = new JMenuItem("HTML exportieren");
-        export.addActionListener(new ActionListener() { @Override public void actionPerformed(ActionEvent e) { exportModernBogen(); } });
+        export.addActionListener(new ActionListener() {
+            @Override public void actionPerformed(ActionEvent e) { exportModernBogen(); }
+        });
         liste.add(export);
-        JMenuItem diagnose = new JMenuItem("Heldendaten diagnostizieren (XML)");
-        diagnose.addActionListener(new ActionListener() { @Override public void actionPerformed(ActionEvent e) { exportDiagnose(); } });
-        liste.add(diagnose);
         return liste;
     }
 
+    /**
+     * Holt den aktuell ausgewählten Helden genau einmal aus der Plugin-API.
+     * Die Antwort ist die zentrale Datenquelle für Generator und alle Enhancer.
+     * Dadurch entfallen doppelte API-Aufrufe und die bisherige künstliche
+     * Trennung zwischen "normalen" und "berechneten" Heldendaten.
+     */
     private File exportModernBogen() {
         Document heldDoc = getCurrentHeldenXml();
         if (heldDoc == null) {
             JOptionPane.showMessageDialog(frame, "Kein Held geladen oder XML konnte nicht gelesen werden.", "Fehler", JOptionPane.ERROR_MESSAGE);
             return null;
         }
-        Document calculatedDoc = getCalculatedCombatXml();
+
         String heldName = HtmlGenerator.extractHeldName(heldDoc);
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Helden-Overhaul: HTML exportieren");
         chooser.setSelectedFile(new File(sanitizeFilename(heldName) + "_modern.html"));
         chooser.setFileFilter(new FileNameExtensionFilter("HTML-Dateien", "html", "htm"));
         if (chooser.showSaveDialog(frame) != JFileChooser.APPROVE_OPTION) return null;
+
         File htmlFile = chooser.getSelectedFile();
         if (!htmlFile.getName().toLowerCase().endsWith(".html") && !htmlFile.getName().toLowerCase().endsWith(".htm")) {
             htmlFile = new File(htmlFile.getParentFile(), htmlFile.getName() + ".html");
         }
+
         try {
             String html = HtmlGenerator.generate(heldDoc);
             html = HtmlParityEnhancer.enhance(html, heldDoc);
-            html = FernkampfParityEnhancer.enhance(html, heldDoc, calculatedDoc);
+            html = FernkampfParityEnhancer.enhance(html, heldDoc);
+
             Writer w = new OutputStreamWriter(new FileOutputStream(htmlFile), StandardCharsets.UTF_8);
-            try { w.write(html); } finally { w.close(); }
+            try {
+                w.write(html);
+            } finally {
+                w.close();
+            }
+
             JOptionPane.showMessageDialog(frame, "Gespeichert:\n" + htmlFile.getAbsolutePath(), "Fertig", JOptionPane.INFORMATION_MESSAGE);
             return htmlFile;
         } catch (Exception ex) {
@@ -81,49 +95,17 @@ public class ModernBogenPlugin implements HeldenXMLDatenPlugin3 {
         }
     }
 
-    /**
-     * Exportiert beide relevanten Antworten der Plugin-API. So sehen wir sowohl
-     * die normalen Heldendaten als auch die von der Software berechneten Daten.
-     */
-    private void exportDiagnose() {
-        Document heldDoc = getCurrentHeldenXml();
-        Document calculatedDoc = getCalculatedCombatXml();
-        if (heldDoc == null && calculatedDoc == null) {
-            JOptionPane.showMessageDialog(frame, "Die Helden-Software hat keine Heldendaten zurückgegeben.", "Diagnose", JOptionPane.ERROR_MESSAGE);
-            return;
-        }
-        String heldName = heldDoc == null ? "Held" : HtmlGenerator.extractHeldName(heldDoc);
-        JFileChooser chooser = new JFileChooser();
-        chooser.setDialogTitle("Heldendaten-Diagnose speichern");
-        chooser.setSelectedFile(new File(sanitizeFilename(heldName) + "_diagnose.xml"));
-        chooser.setFileFilter(new FileNameExtensionFilter("XML-Dateien", "xml"));
-        if (chooser.showSaveDialog(frame) != JFileChooser.APPROVE_OPTION) return;
-        File file = chooser.getSelectedFile();
-        if (!file.getName().toLowerCase().endsWith(".xml")) file = new File(file.getParentFile(), file.getName() + ".xml");
-        try {
-            HeldenDatenDiagnose.export(heldDoc, calculatedDoc, file);
-            JOptionPane.showMessageDialog(frame,
-                    "Diagnose gespeichert:\n" + file.getAbsolutePath()
-                    + "\n\nDie Datei enthält die normalen und die berechneten Daten, die über die Plugin-API geliefert wurden.",
-                    "Diagnose", JOptionPane.INFORMATION_MESSAGE);
-        } catch (Exception ex) {
-            ex.printStackTrace();
-            JOptionPane.showMessageDialog(frame, "Fehler beim Diagnoseexport:\n" + ex.getMessage(), "Diagnose", JOptionPane.ERROR_MESSAGE);
-        }
-    }
-
-    private Document getCurrentHeldenXml() { return execHeldRequest("selected"); }
-    private Document getCalculatedCombatXml() { return execHeldRequest("selected"); }
-
-    private Document execHeldRequest(String id) {
+    /** Holt die vollständige XML-Antwort des aktuell ausgewählten Helden. */
+    private Document getCurrentHeldenXml() {
         if (dai == null) return null;
         try {
             Document request = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument();
             Element action = request.createElement("action");
             request.appendChild(action);
             action.setAttribute("action", "held");
-            action.setAttribute("id", id);
+            action.setAttribute("id", "selected");
             action.setAttribute("format", "xml");
+
             Object result = dai.exec(request);
             return result instanceof Document ? (Document) result : null;
         } catch (Exception ex) {
