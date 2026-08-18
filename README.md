@@ -38,6 +38,12 @@ Dieses Plugin bringt **Helden-Overhaul** direkt in die [Helden-Software](https:/
 
 ---
 
+Aktuell bekannte Fehler:
+ - Fernkampfdaten können nicht ausgelesen werden, es erfolgt kein Eintrag in das HTML.
+
+
+---
+
 ![Vorschau](https://files.catbox.moe/dp2t6q.png)
 
 ---
