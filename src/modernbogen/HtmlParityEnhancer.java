@@ -5,18 +5,18 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
-import org.w3c.dom.Document;
 
 /**
  * Ergänzt den von HtmlGenerator erzeugten Bogen um Darstellungen, die der
- * Python-Overhaul aus dem ursprünglichen HTML erhalten bzw. modernisiert.
+ * Python-Overhaul aus dem ursprünglichen HTML erhält bzw. modernisiert.
  *
  * Der wichtigste Punkt ist die Zonenrüstung: Die XML-Strukturen der
  * Helden-Software unterscheiden sich je nach Export/API-Version. Deshalb
- * werden Rüstungen hier rekursiv gesucht und sowohl Text-Elemente als auch
+ * werden Rüstungen rekursiv gesucht und sowohl Text-Elemente als auch
  * Attribute berücksichtigt.
  */
 public final class HtmlParityEnhancer {
@@ -35,9 +35,8 @@ public final class HtmlParityEnhancer {
         // Zonen-Tabelle erhalten.
         int start = html.indexOf("<table class=\"ruestungen modern-section\"");
         if (start >= 0) {
-            int end = html.indexOf("</table>", start);
+            int end = findMatchingTableEnd(html, start);
             if (end >= 0) {
-                end += "</table>".length();
                 return html.substring(0, start) + section + html.substring(end);
             }
         }
@@ -53,14 +52,33 @@ public final class HtmlParityEnhancer {
         return html;
     }
 
+    /** Findet das zu einer äußeren <table> gehörende </table>. */
+    private static int findMatchingTableEnd(String html, int start) {
+        int depth = 0;
+        int pos = start;
+        while (pos < html.length()) {
+            int open = html.indexOf("<table", pos);
+            int close = html.indexOf("</table>", pos);
+            if (close < 0) return -1;
+            if (open >= 0 && open < close) {
+                depth++;
+                pos = open + 6;
+            } else {
+                depth--;
+                int end = close + "</table>".length();
+                if (depth == 0) return end;
+                pos = end;
+            }
+        }
+        return -1;
+    }
+
     private static List<Armor> readArmors(Document doc) {
         List<Armor> result = new ArrayList<Armor>();
         Set<String> seen = new HashSet<String>();
         collectArmorNodes(doc.getDocumentElement(), result, seen);
 
-        // Falls die XML-API nur ein aktives Kampfset liefert, ist die
-        // rekursive Suche bereits ausreichend. Die explizite Suche nach
-        // "ruestungeinfach" deckt zusätzlich diese Variante ab.
+        // Einige API-Varianten verwenden explizit ruestungeinfach.
         NodeList simple = doc.getElementsByTagNameNS("*", "ruestungeinfach");
         if (simple.getLength() == 0) simple = doc.getElementsByTagName("ruestungeinfach");
         for (int i = 0; i < simple.getLength(); i++) {
@@ -86,10 +104,6 @@ public final class HtmlParityEnhancer {
         Armor a = parseArmor(el);
         if (a.name.isEmpty()) return;
 
-        // Identische Einträge können durch verschachtelte XML-Knoten mehrfach
-        // gefunden werden. Inhalt wird als Teil des Schlüssels berücksichtigt,
-        // damit zwei gleichnamige Rüstungen mit unterschiedlichen Zonenwerten
-        // nicht versehentlich verschwinden.
         String key = a.name + "|" + a.kopf + "|" + a.brust + "|" + a.ruecken + "|"
                 + a.bauch + "|" + a.linkerArm + "|" + a.rechterArm + "|"
                 + a.linkesBein + "|" + a.rechtesBein + "|" + a.rs + "|" + a.be;
@@ -98,24 +112,22 @@ public final class HtmlParityEnhancer {
 
     private static Armor parseArmor(Element el) {
         Armor a = new Armor();
-        a.name = first(el, "name", "bezeichnung", "bezeichner", attr(el, "name"));
-        a.kopf = first(el, "kopf", "kopfschutz", "ko", attr(el, "kopf"), attr(el, "ko"));
-        a.brust = first(el, "brust", "brustschutz", "br", attr(el, "brust"), attr(el, "br"));
-        a.ruecken = first(el, "ruecken", "rücken", "rueckenschutz", "rue", attr(el, "ruecken"), attr(el, "rue"));
-        a.bauch = first(el, "bauch", "bauchschutz", "ba", attr(el, "bauch"), attr(el, "ba"));
-        a.linkerArm = first(el, "linkerarm", "linkerArm", "la", attr(el, "linkerarm"), attr(el, "la"));
-        a.rechterArm = first(el, "rechterarm", "rechterArm", "ra", attr(el, "rechterarm"), attr(el, "ra"));
-        a.linkesBein = first(el, "linkesbein", "linkesBein", "lb", attr(el, "linkesbein"), attr(el, "lb"));
-        a.rechtesBein = first(el, "rechtesbein", "rechtesBein", "rb", attr(el, "rechtesbein"), attr(el, "rb"));
-        a.gesamt = first(el, "gesamt", "ges", attr(el, "gesamt"), attr(el, "ges"));
-        a.grs = first(el, "gesamtzonenschutz", "gesamtzonenschutzwert", "grs", "gers", attr(el, "grs"), attr(el, "gers"));
-        a.gbe = first(el, "gesamtbehinderung", "gesamt-be", "gbe", "behinderung", "be", attr(el, "gbe"), attr(el, "be"));
-        a.rs = first(el, "rs", "ruestungsschutz", "schutz", attr(el, "rs"));
-        a.be = first(el, "be", "behinderung", attr(el, "be"));
+        a.name = first(el, "name", "bezeichnung", "bezeichner");
+        a.kopf = first(el, "kopf", "kopfschutz", "ko");
+        a.brust = first(el, "brust", "brustschutz", "br");
+        a.ruecken = first(el, "ruecken", "rücken", "rueckenschutz", "rue");
+        a.bauch = first(el, "bauch", "bauchschutz", "ba");
+        a.linkerArm = first(el, "linkerarm", "linkerArm", "la");
+        a.rechterArm = first(el, "rechterarm", "rechterArm", "ra");
+        a.linkesBein = first(el, "linkesbein", "linkesBein", "lb");
+        a.rechtesBein = first(el, "rechtesbein", "rechtesBein", "rb");
+        a.gesamt = first(el, "gesamt", "ges");
+        a.grs = first(el, "gesamtzonenschutz", "gesamtzonenschutzwert", "grs", "gers");
+        a.gbe = first(el, "gesamtbehinderung", "gesamt-be", "gbe");
+        a.rs = first(el, "rs", "ruestungsschutz", "schutz");
+        a.be = first(el, "be", "behinderung");
 
-        // Manche Exporte speichern nur die Zonenwerte in einem Unterknoten.
-        // Die erste()-/text()-Suche ist bewusst rekursiv, damit diese Form
-        // ebenfalls funktioniert.
+        // Manche Exporte speichern Gesamtwerte unter leicht anderen Namen.
         if (a.rs.isEmpty()) a.rs = first(el, "gesamtzonenschutz", "grs", "rs");
         if (a.grs.isEmpty()) a.grs = first(el, "gesamtzonenschutz", "grs", "gers");
         if (a.be.isEmpty()) a.be = first(el, "behinderung", "be", "gbe");
@@ -165,17 +177,25 @@ public final class HtmlParityEnhancer {
         sb.append("<td class=\"").append(cls).append("\">").append(esc(value)).append("</td>");
     }
 
+    /** Liest zuerst ein gleichnamiges XML-Element und danach ein gleichnamiges Attribut. */
     private static String first(Element e, String... keys) {
         for (String key : keys) {
             if (key == null || key.isEmpty()) continue;
             String value = textRecursive(e, key);
             if (!value.isEmpty()) return value;
+            value = attrIgnoreCase(e, key);
+            if (!value.isEmpty()) return value;
         }
         return "";
     }
 
-    private static String attr(Element e, String key) {
-        return e.hasAttribute(key) ? e.getAttribute(key).trim() : "";
+    private static String attrIgnoreCase(Element e, String key) {
+        if (e.hasAttribute(key)) return e.getAttribute(key).trim();
+        for (int i = 0; i < e.getAttributes().getLength(); i++) {
+            Node n = e.getAttributes().item(i);
+            if (n.getNodeName().equalsIgnoreCase(key)) return n.getNodeValue().trim();
+        }
+        return "";
     }
 
     private static String textRecursive(Element e, String key) {
@@ -183,7 +203,6 @@ public final class HtmlParityEnhancer {
         if (nodes.getLength() == 0) nodes = e.getElementsByTagName(key);
         if (nodes.getLength() > 0) return nodes.item(0).getTextContent().trim();
 
-        // XML kann unterschiedliche Groß-/Kleinschreibung bzw. Akzente nutzen.
         NodeList children = e.getChildNodes();
         for (int i = 0; i < children.getLength(); i++) {
             Node n = children.item(i);
