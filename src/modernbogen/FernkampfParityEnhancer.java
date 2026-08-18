@@ -48,11 +48,6 @@ public final class FernkampfParityEnhancer {
         return result;
     }
 
-    /**
-     * Ergänzt die Liste aus dem aktiven Kampfset. Damit ist die Fernkampfsektion
-     * nicht mehr davon abhängig, ob die normale Heldendaten-XML die
-     * heldenausruestung/fkwaffe*-Einträge in genau der erwarteten Form liefert.
-     */
     private static void mergeCalculatedWeapons(List<RangedWeapon> weapons, Document doc) {
         Element set=findActiveCombatSet(doc);
         if(set==null) return;
@@ -102,15 +97,15 @@ public final class FernkampfParityEnhancer {
         String v;
         v=text(e,"at"); if(!v.isEmpty()) w.fk=v;
         v=text(e,"tp"); if(!v.isEmpty()) w.tp=v;
-        w.tpkk=textAny(e,w.tpkk,"tpkk","tp/kk");
-        w.tpEntfernung=textAny(e,w.tpEntfernung,"tpentfernung","tpEntfernung","tp/entfernung","tp-entfernung","tp_entfernung","tpentf","schadenentfernung","entfernungtp");
-        w.reichweite=textAny(e,w.reichweite,"reichweite","rw","entfernung");
-        w.lz=textAny(e,w.lz,"ladezeit","lz","reload");
-        w.ini=textAny(e,w.ini,"ini","initiative");
-        w.mod=textAny(e,w.mod,"wm","mod","waffenmodifikator");
-        w.munition=textAny(e,w.munition,"munition","munitionsart","ammo");
-        w.minbf=textAny(e,w.minbf,"minbf","bfmin");
-        w.aktbf=textAny(e,w.aktbf,"aktbf","bfakt","bf");
+        w.tpkk=firstTextIfEmpty(e,w.tpkk,"tpkk","tp/kk");
+        w.tpEntfernung=firstTextIfEmpty(e,w.tpEntfernung,"tpentfernung","tpEntfernung","tp/entfernung","tp-entfernung","tp_entfernung","tpentf","schadenentfernung","entfernungtp");
+        w.reichweite=firstTextIfEmpty(e,w.reichweite,"reichweite","rw","entfernung");
+        w.lz=firstTextIfEmpty(e,w.lz,"ladezeit","lz","reload");
+        w.ini=firstTextIfEmpty(e,w.ini,"ini","initiative");
+        w.mod=firstTextIfEmpty(e,w.mod,"wm","mod","waffenmodifikator");
+        w.munition=firstTextIfEmpty(e,w.munition,"munition","munitionsart","ammo");
+        w.minbf=firstTextIfEmpty(e,w.minbf,"minbf","bfmin");
+        w.aktbf=firstTextIfEmpty(e,w.aktbf,"aktbf","bfakt","bf");
     }
 
     private static RangedWeapon find(List<RangedWeapon> weapons,String name) {
@@ -150,13 +145,12 @@ public final class FernkampfParityEnhancer {
         Node x=n.item(0); return x.getTextContent()==null?"":x.getTextContent().trim();
     }
 
-    private static String textAny(Element e,String current,String...tags) {
+    private static String firstTextIfEmpty(Element e,String current,String...tags) {
         if(current!=null && !current.isEmpty()) return current;
-        return textAny(e,tags);
-    }
-
-    private static String textAny(Element e,String...tags) {
-        for(String tag:tags) { String v=text(e,tag); if(!v.isEmpty()) return v; }
+        for(String tag:tags) {
+            String v=text(e,tag);
+            if(!v.isEmpty()) return v;
+        }
         return "";
     }
 
