@@ -23,7 +23,6 @@ Dieses Plugin bringt **Helden-Overhaul** direkt in die [Helden-Software](https:/
 1. `ModernBogenPlugin.jar` in den **Plugin-Ordner** der Helden-Software legen  
    (typisch: `…/helden/plugins` neben `helden.jar`).
 2. Helden-Software **neu starten**.
-3. Menü: **Helden-Overhaul → HTML exportieren**.
 
 **Wichtig:** Die Helden-Software läuft unter **Java 8**. Das Plugin ist entsprechend mit `-source 1.8 -target 1.8` gebaut.
 
